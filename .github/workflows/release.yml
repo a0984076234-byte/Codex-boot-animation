@@ -9,12 +9,29 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check tag and package versions
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, tomllib
+          version = pathlib.Path("VERSION").read_text().strip()
+          assert os.environ["GITHUB_REF_NAME"] == f"v{version}", "Tag must match VERSION"
+          for file in ("control-center/package.json", "control-center/src-tauri/tauri.conf.json"):
+              assert json.loads(pathlib.Path(file).read_text())["version"] == version, file
+          assert tomllib.loads(pathlib.Path("control-center/src-tauri/Cargo.toml").read_text())["package"]["version"] == version
+          PY
+
   windows:
+    needs: version
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
 
   macos:
+    needs: version
     uses: ./.github/workflows/macos.yml
     permissions:
       contents: read
@@ -23,6 +40,7 @@ jobs:
     needs: [windows, macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -33,16 +51,13 @@ jobs:
         with:
           name: CodexBootAnimation-macos-arm64
           path: release-files/macos
-      - name: List release files
-        run: find release-files -type f -maxdepth 6 -print
+      - name: Prepare verified release assets
+        run: |
+          python3 scripts/prepare-release.py release-files release-assets
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          body: |
-            Codex Boot Animation desktop packages.
-
-            - Windows: use the control-center ZIP or NSIS installer.
-            - macOS: use the Apple Silicon ZIP or DMG. The first release is not notarized.
-            - Preview first, then explicitly enable startup integration from the control center.
-          files: release-files/**/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag --title "Codex Boot Animation $GITHUB_REF_NAME" \
+            --notes-file docs/RELEASE_NOTES.md

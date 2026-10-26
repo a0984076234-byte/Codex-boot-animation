@@ -25,6 +25,7 @@ import {
   X
 } from "lucide-react";
 import "./styles.css";
+import { version as appVersion } from "../package.json";
 
 type Theme = {
   id: string;
@@ -287,7 +288,10 @@ const copy = {
     downloadWindows: "下载 Windows 版",
     downloadMac: "下载 macOS 版",
     downloadBody: "网页只能预览主题；下载桌面版后，才能把动画应用到 Codex 启动入口。",
-    installGuide: "查看安装说明"
+    installGuide: "查看安装说明",
+    downloadTheme: "下载演示主题",
+    allDownloads: "所有下载",
+    bundledHint: "桌面版已含演示主题。网页中的选择和编辑不会自动同步到桌面版。"
   },
   en: {
     appName: "Codex Boot Animation",
@@ -379,7 +383,10 @@ const copy = {
     downloadWindows: "Download for Windows",
     downloadMac: "Download for macOS",
     downloadBody: "The website previews themes; the desktop app is required to apply one to Codex launch entries.",
-    installGuide: "Installation guide"
+    installGuide: "Installation guide",
+    downloadTheme: "Download demo theme",
+    allDownloads: "All downloads",
+    bundledHint: "The desktop app includes the demo. Browser selections and edits do not sync to desktop."
   }
 } as const;
 type Copy = { [Key in keyof typeof copy.zh]: string };
@@ -397,11 +404,15 @@ function App() {
   const [selected, setSelected] = useState<Theme | null>(null);
   const [githubUrl, setGithubUrl] = useState("");
   const [showGithub, setShowGithub] = useState(false);
+  const [previewTheme, setPreviewTheme] = useState<Theme | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const t = copy[locale] as Copy;
   const webPlatform = detectWebPlatform();
   const releasesUrl = "https://github.com/a0984076234-byte/Codex-boot-animation/releases/latest";
+  const releaseAssetBase = `https://github.com/a0984076234-byte/Codex-boot-animation/releases/download/v${appVersion}/`;
+  const windowsDownload = `${releaseAssetBase}CodexBootAnimation-${appVersion}-win-x64-control-center.zip`;
+  const macDownload = `${releaseAssetBase}CodexBootAnimation-${appVersion}-macos-arm64.dmg`;
   const installGuideUrl = "https://github.com/a0984076234-byte/Codex-boot-animation/blob/main/docs/INSTALLATION.md";
 
   const load = async () => {
@@ -449,13 +460,7 @@ function App() {
     try {
       if (!desktopRuntime) {
         if (action === "preview") {
-          const video = document.querySelector<HTMLVideoElement>(".theme-video");
-          if (!video) setView("themes");
-          if (video) {
-            video.currentTime = 0;
-            await video.play().catch(() => undefined);
-          }
-          setNotice({ kind: "success", text: t.actionDone });
+          setPreviewTheme(themes.find((theme) => theme.id === themeId) ?? null);
         } else {
           setNotice({ kind: "error", text: t.desktopOnly });
         }
@@ -668,7 +673,20 @@ function App() {
 
         {notice && <div role="status" className={`notice ${notice.kind}`}><span>{notice.text}</span><button aria-label={t.close} onClick={() => setNotice(null)}><X size={15} /></button></div>}
         {busy && <p className="working-status" role="status">{t.processing}…</p>}
-        {!desktopRuntime && <div className="web-mode-banner"><Download size={18} /><div><strong>{t.webModeTitle}</strong><p>{t.webModeBody}</p><small>{t.webImportHint}</small><p className="web-download-copy">{t.downloadBody}</p><div className="web-mode-actions"><a className="button primary" href={releasesUrl} target="_blank" rel="noreferrer"><Download size={15} /> {webPlatform === "windows" ? t.downloadWindows : webPlatform === "macos" ? t.downloadMac : t.downloadDesktop}</a><a className="button secondary" href={installGuideUrl} target="_blank" rel="noreferrer">{t.installGuide}</a></div></div></div>}
+        {!desktopRuntime && <section className="web-mode-banner"><Download size={18} /><div>
+          <strong>{t.webModeTitle}</strong>
+          <p>{t.downloadBody}</p>
+          <div className="web-mode-actions">
+            {(webPlatform === "macos"
+              ? [[t.downloadMac, macDownload, "mac"], [t.downloadWindows, windowsDownload, "windows"]]
+              : [[t.downloadWindows, windowsDownload, "windows"], [t.downloadMac, macDownload, "mac"]]
+            ).map(([label, href], index) => <a key={href} className={`button ${index === 0 ? "primary" : "secondary"}`} href={href}><Download size={15} /> {label}</a>)}
+            <a className="button secondary" href={`${releaseAssetBase}CodexBootAnimation-demo-theme.zip`}><Palette size={15} /> {t.downloadTheme}</a>
+          </div>
+          <p className="download-compatibility">Windows 10/11 x64 · macOS 13+ Apple Silicon</p>
+          <p>{t.bundledHint}</p>
+          <div className="download-links"><a href={releasesUrl} target="_blank" rel="noreferrer">{t.allDownloads}</a><a href={installGuideUrl} target="_blank" rel="noreferrer">{t.installGuide}</a></div>
+        </div></section>}
 
         {view === "overview" && (
           <Overview
@@ -704,6 +722,13 @@ function App() {
       </main>
 
       {!desktopRuntime && <input ref={localThemeInputRef} className="web-file-input" type="file" multiple onChange={(event) => void importLocalInBrowser(event.target.files)} />}
+
+      {previewTheme && <div className="modal-backdrop" onMouseDown={() => setPreviewTheme(null)}>
+        <div className="modal video-modal" role="dialog" aria-modal="true" aria-label={t.preview} onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape") setPreviewTheme(null); }}>
+          <div className="modal-heading"><h3>{previewTheme.name}</h3><button autoFocus className="icon-button" aria-label={t.close} onClick={() => setPreviewTheme(null)}><X size={18} /></button></div>
+          <video className="theme-video" src={mediaSrc(previewTheme.videoPath)} poster={previewTheme.posterPath ? mediaSrc(previewTheme.posterPath) : undefined} controls autoPlay playsInline />
+        </div>
+      </div>}
 
       {showGithub && (
         <div className="modal-backdrop" onMouseDown={() => setShowGithub(false)}>
@@ -843,7 +868,7 @@ function TimelineEditor({ t, theme, busy, onSave }: { t: Copy; theme: Theme; bus
 }
 
 function Settings({ t, status }: { t: Copy; status: LauncherStatus | null }) {
-  return <div className="settings-layout"><section className="settings-section"><div className="section-heading"><div><span className="eyebrow">{t.diagnostics}</span><h3>{t.security}</h3></div><ShieldCheck size={20} /></div><div className="setting-line"><div><strong>{t.security}</strong><p>{t.securityBody}</p></div><span className="tag green"><Check size={13} /> OK</span></div><div className="setting-line"><div><strong>{t.runtime}</strong><p>{status?.nativeAvailable ? t.nativeReady : t.nativeMissing}</p></div><span className={`tag ${status?.nativeAvailable ? "green" : "amber"}`}>{status?.platform || "—"}</span></div><div className="setting-line"><div><strong>{t.backupState}</strong><p>{status?.backupAvailable ? t.available : t.unavailable}</p></div><span className={`tag ${status?.backupAvailable ? "green" : "amber"}`}>{status?.backupAvailable ? t.available : t.unavailable}</span></div></section><section className="settings-section"><div className="section-heading"><div><span className="eyebrow">{t.about}</span><h3>{t.appName}</h3></div><Sparkles size={20} /></div><p className="about-copy">{t.aboutBody}</p><div className="setting-line"><span>{t.version}</span><strong>0.2.0</strong></div><div className="setting-line"><div><span>{t.dataDirectory}</span><p className="data-path">{status?.dataPath || "—"}</p></div><Download size={16} /></div></section></div>;
+  return <div className="settings-layout"><section className="settings-section"><div className="section-heading"><div><span className="eyebrow">{t.diagnostics}</span><h3>{t.security}</h3></div><ShieldCheck size={20} /></div><div className="setting-line"><div><strong>{t.security}</strong><p>{t.securityBody}</p></div><span className="tag green"><Check size={13} /> OK</span></div><div className="setting-line"><div><strong>{t.runtime}</strong><p>{status?.nativeAvailable ? t.nativeReady : t.nativeMissing}</p></div><span className={`tag ${status?.nativeAvailable ? "green" : "amber"}`}>{status?.platform || "—"}</span></div><div className="setting-line"><div><strong>{t.backupState}</strong><p>{status?.backupAvailable ? t.available : t.unavailable}</p></div><span className={`tag ${status?.backupAvailable ? "green" : "amber"}`}>{status?.backupAvailable ? t.available : t.unavailable}</span></div></section><section className="settings-section"><div className="section-heading"><div><span className="eyebrow">{t.about}</span><h3>{t.appName}</h3></div><Sparkles size={20} /></div><p className="about-copy">{t.aboutBody}</p><div className="setting-line"><span>{t.version}</span><strong>{appVersion}</strong></div><div className="setting-line"><div><span>{t.dataDirectory}</span><p className="data-path">{status?.dataPath || "—"}</p></div><Download size={16} /></div></section></div>;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<React.StrictMode><App /></React.StrictMode>);

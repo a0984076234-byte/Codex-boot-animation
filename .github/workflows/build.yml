@@ -2,6 +2,7 @@ name: Windows build
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -49,19 +50,32 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
           cargo test --manifest-path src-tauri/Cargo.toml
           npm run tauri -- build --bundles nsis
-          $portable = Join-Path $PWD 'dist/CodexBootAnimation-0.2.0-win-x64-control-center'
+          $version = (Get-Content ../VERSION -Raw).Trim()
+          $portable = Join-Path $PWD "dist/CodexBootAnimation-$version-win-x64-control-center"
           New-Item -ItemType Directory -Path $portable -Force | Out-Null
           Copy-Item -LiteralPath 'src-tauri/target/release/codex-boot-animation-control-center.exe' -Destination $portable
-          $resources = 'src-tauri/target/release/resources'
-          if (Test-Path -LiteralPath $resources) {
-            Copy-Item -LiteralPath $resources -Destination $portable -Recurse -Force
+          # Windows resource_dir is beside the executable, not a resources subfolder.
+          New-Item -ItemType Directory -Path "$portable/native/windows","$portable/demo/media" -Force | Out-Null
+          Copy-Item -LiteralPath 'resources/windows/DragonCodexBoot' -Destination "$portable/native/windows" -Recurse -Force
+          Copy-Item -LiteralPath '../codex-theme.json' -Destination "$portable/demo"
+          Copy-Item -Path '../media/*' -Destination "$portable/demo/media" -Force
+          foreach ($name in @('LICENSE','THIRD_PARTY_NOTICES.md','VERSION')) {
+            Copy-Item -LiteralPath "../$name" -Destination $portable
+          }
+          Copy-Item -LiteralPath '../docs/INSTALLATION.md' -Destination $portable
+          foreach ($required in @('native/windows/DragonCodexBoot/DragonCodexBoot.exe','native/windows/DragonCodexBoot/scripts/integrate-entrypoints.ps1','demo/codex-theme.json','demo/media/startup.mp4')) {
+            if (!(Test-Path -LiteralPath "$portable/$required")) { throw "Missing portable resource: $required" }
           }
           Compress-Archive -Path (Join-Path $portable '*') -DestinationPath ($portable + '.zip') -Force
+          $check = Join-Path $env:RUNNER_TEMP 'control-center-unpacked'
+          Expand-Archive -LiteralPath ($portable + '.zip') -DestinationPath $check -Force
+          if ((Get-FileHash "$portable/demo/media/startup.mp4").Hash -ne (Get-FileHash "$check/demo/media/startup.mp4").Hash) { throw 'Portable media checksum mismatch' }
       - uses: actions/upload-artifact@v4
         with:
           name: CodexBootAnimation-windows-x64
           path: |
             dist/*.zip
             dist/*.sha256
+            control-center/dist/*-control-center.zip
             control-center/src-tauri/target/release/bundle/nsis/*
           if-no-files-found: error

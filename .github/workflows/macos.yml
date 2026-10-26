@@ -2,6 +2,7 @@ name: macOS build
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:
@@ -45,20 +46,30 @@ jobs:
             "src-tauri/target/release/bundle/macos/Codex Boot Animation.app"
           codesign --verify --deep --strict \
             "src-tauri/target/release/bundle/macos/Codex Boot Animation.app"
+          app="src-tauri/target/release/bundle/macos/Codex Boot Animation.app"
+          test -x "$app/Contents/Resources/native/macos/DragonCodexBoot.app/Contents/MacOS/DragonCodexBootMac"
+          test -s "$app/Contents/Resources/demo/codex-theme.json"
+          cmp ../media/startup.mp4 "$app/Contents/Resources/demo/media/startup.mp4"
+          version="$(tr -d '\r\n' < ../VERSION)"
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent \
             "src-tauri/target/release/bundle/macos/Codex Boot Animation.app" \
-            "dist/CodexBootAnimation-0.2.0-macos-arm64.zip"
+            "dist/CodexBootAnimation-$version-macos-arm64.zip"
           hdiutil create -volname "Codex Boot Animation" \
             -srcfolder "src-tauri/target/release/bundle/macos/Codex Boot Animation.app" \
             -ov -format UDZO \
-            "dist/CodexBootAnimation-0.2.0-macos-arm64.dmg"
+            "dist/CodexBootAnimation-$version-macos-arm64.dmg"
+          unpacked="$(mktemp -d)"
+          ditto -x -k "dist/CodexBootAnimation-$version-macos-arm64.zip" "$unpacked"
+          codesign --verify --deep --strict "$unpacked/Codex Boot Animation.app"
       - uses: actions/upload-artifact@v4
         with:
           name: CodexBootAnimation-macos-arm64
           path: |
-            dist/*
-            control-center/dist/*
+            dist/*.zip
+            dist/*.sha256
+            control-center/dist/*.zip
+            control-center/dist/*.dmg
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:

@@ -60,5 +60,7 @@ cat > "$app_bundle/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
+version="$(tr -d '\r\n' < "$repo_root/VERSION")"
+/usr/libexec/PlistBuddy -c "Set CFBundleShortVersionString $version" "$app_bundle/Contents/Info.plist"
 codesign --force --deep --sign - "$app_bundle"
 printf 'Built: %s\n' "$app_bundle"

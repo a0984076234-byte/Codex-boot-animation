@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-10-27
+
+- 发布 Windows 控制中心 ZIP/安装器、macOS Apple Silicon ZIP/DMG 和独立主题 ZIP。
+- 网站提供双平台下载、主题包下载和安装说明。
+- 检查便携包资源和解压后签名，为每份下载生成 SHA-256。
+- 启用 GitHub Pages 自动部署，版本标签自动执行两平台测试并发布 Release。
+
 - 项目更名为 Codex Boot Animation，新增 Tauri/React/TypeScript 控制中心。
 - 新增公开 GitHub 主题仓库导入、主题清单校验、预览、明确启用、停用、备份、恢复和诊断入口。
 - 控制中心的主题导入不会执行仓库脚本，并限制相对路径、媒体类型和文件大小。

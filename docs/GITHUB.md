@@ -29,17 +29,18 @@ git push -u origin main
 推送版本标签后，`release.yml` 会复用 Windows 和 macOS 构建工作流，等待测试和打包完成，再自动创建 GitHub Release 并上传桌面包：
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 用户下载入口是仓库的 **Releases → Latest**。网站的“下载桌面版”按钮也指向这里。
 
 Release 包含：
 
-- Windows 控制中心便携 ZIP、NSIS 安装器，以及带完整演示视频的原生播放器 ZIP；
-- macOS Apple Silicon 控制中心 ZIP/DMG，以及独立预览播放器 ZIP；
-- 对应的 SHA-256 文件（适用于带视频的独立播放器包）。
+- Windows 控制中心便携 ZIP、NSIS 安装器；
+- macOS Apple Silicon 控制中心 ZIP/DMG；
+- 可单独导入的演示主题 ZIP；
+- 每份下载对应的 SHA-256 文件。
 
 安装包默认只预览，不会自动接管系统入口。Release 说明必须明确这一点，并引导用户在控制中心中明确点击“启用启动动画”。
 
@@ -57,8 +58,8 @@ Release 包含：
 The repository is already created and points to `a0984076234-byte/Codex-boot-animation`. Do not run `gh repo create` again. Verify the remote with `git remote -v`, then create a version tag to publish a release:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The release workflow uploads Windows and macOS desktop packages. The control center previews by default and only backs up and changes recognized Codex launch entry points after the user explicitly chooses **Enable startup animation**. Code is MIT-licensed; bundled demonstration media has a separate notice and may carry different rights.

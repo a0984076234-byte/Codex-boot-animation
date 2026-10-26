@@ -1,6 +1,6 @@
 [package]
 name = "codex-boot-animation-control-center"
-version = "0.2.0"
+version = "0.2.1"
 description = "Control center for Codex Boot Animation"
 authors = ["Codex Boot Animation contributors"]
 edition = "2021"
