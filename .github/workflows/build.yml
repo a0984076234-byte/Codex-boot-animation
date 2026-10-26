@@ -47,7 +47,7 @@ jobs:
           npm run build
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
           cargo test --manifest-path src-tauri/Cargo.toml
-          npm run tauri build --bundles nsis
+          npm run tauri -- build --bundles nsis
           $portable = Join-Path $PWD 'dist/CodexBootAnimation-0.2.0-win-x64-control-center'
           New-Item -ItemType Directory -Path $portable -Force | Out-Null
           Copy-Item -LiteralPath 'src-tauri/target/release/codex-boot-animation-control-center.exe' -Destination $portable

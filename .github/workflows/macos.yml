@@ -39,7 +39,7 @@ jobs:
           npm run build
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
           cargo test --manifest-path src-tauri/Cargo.toml
-          npm run tauri build --bundles app
+          npm run tauri -- build --bundles app
           codesign --force --deep --sign - \
             "src-tauri/target/release/bundle/macos/Codex Boot Animation.app"
           codesign --verify --deep --strict \
