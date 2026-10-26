@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Select complete desktop packages; never publish the frontend build tree."""
 import hashlib
+import os
 import pathlib
 import shutil
 import sys
 import zipfile
 
-repo = pathlib.Path(__file__).resolve().parent.parent
+repo = pathlib.Path(os.environ.get("RELEASE_SOURCE_ROOT", pathlib.Path(__file__).resolve().parent.parent))
 version = (repo / "VERSION").read_text().strip()
 source, destination = map(pathlib.Path, sys.argv[1:])
 required = (
@@ -26,6 +27,11 @@ if len(installers) != 1:
 assets.extend(installers)
 windows = assets[0]
 with zipfile.ZipFile(windows) as archive:
+    names = [name.replace("\\", "/") for name in archive.namelist()]
+    if len(set(names)) != len(names):
+        raise SystemExit("Duplicate Windows archive paths")
+    if any(name.startswith("/") or ".." in name.split("/") for name in names):
+        raise SystemExit("Unsafe Windows archive path")
     for name in (
         "codex-boot-animation-control-center.exe",
         "native/windows/DragonCodexBoot/DragonCodexBoot.exe",
@@ -33,11 +39,20 @@ with zipfile.ZipFile(windows) as archive:
         "demo/codex-theme.json",
         "demo/media/startup.mp4",
     ):
-        if name not in archive.namelist():
+        if name not in names:
             raise SystemExit(f"Missing Windows portable resource: {name}")
 destination.mkdir(parents=True, exist_ok=True)
 for asset in assets:
-    shutil.copy2(asset, destination / asset.name)
+    target = destination / asset.name
+    if asset == windows:
+        # Windows PowerShell 5 Compress-Archive uses backslashes inside ZIPs.
+        with zipfile.ZipFile(asset) as original, zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as normalized:
+            for entry in original.infolist():
+                path = entry.filename
+                entry.filename = path.replace("\\", "/")
+                normalized.writestr(entry, original.read(path))
+    else:
+        shutil.copy2(asset, target)
 theme = destination / "CodexBootAnimation-demo-theme.zip"
 with zipfile.ZipFile(theme, "w", zipfile.ZIP_DEFLATED) as archive:
     for relative in (

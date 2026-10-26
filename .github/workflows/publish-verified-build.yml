@@ -1,0 +1,61 @@
+name: Publish verified build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag
+        required: true
+        type: string
+      run_id:
+        description: Release run containing successful Windows and macOS builds
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_RUN: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+          path: release-source
+          persist-credentials: false
+      - name: Verify immutable source and platform tests
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN" --jq '.head_sha')" = "$(git -C release-source rev-parse HEAD)"
+          version="$(tr -d '\r\n' < release-source/VERSION)"
+          test "$RELEASE_TAG" = "v$version"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN/jobs?per_page=100" \
+            --jq '.jobs[] | select(.conclusion == "success") | .name' > completed-jobs.txt
+          grep -Fx 'windows / build' completed-jobs.txt
+          grep -Fx 'macos / build' completed-jobs.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: CodexBootAnimation-windows-x64
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: release-files/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: CodexBootAnimation-macos-arm64
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: release-files/macos
+      - name: Validate packages and publish
+        env:
+          RELEASE_SOURCE_ROOT: release-source
+        run: |
+          python3 scripts/prepare-release.py release-files release-assets
+          gh release create "$RELEASE_TAG" release-assets/* --verify-tag \
+            --title "Codex Boot Animation $RELEASE_TAG" \
+            --notes-file release-source/docs/RELEASE_NOTES.md
