@@ -9,7 +9,9 @@ foreach ($name in $files) {
         if ((Get-Item -LiteralPath (Join-Path $repoRoot $name)).Length -ge 100MB) { throw 'Demo video exceeds the regular Git file limit.' }
         continue
     }
-    if ($name -match '(^|/)(build|dist|\.local|logs|qa|\.integration)/' -or $name -match '\.(mp4|mov|webm|ico|lnk|exe|dll|pdb|zip|pem|key)$') {
+    $isTauriIcon = $name -eq 'control-center/src-tauri/icons/icon.ico'
+    if ($name -match '(^|/)(build|dist|\.local|logs|qa|\.integration)/' -or
+        ($name -match '\.(mp4|mov|webm|ico|lnk|exe|dll|pdb|zip|pem|key)$' -and !$isTauriIcon)) {
         throw ('Private/generated asset tracked: '+$name)
     }
     $text=Get-Content -LiteralPath (Join-Path $repoRoot $name) -Encoding UTF8 -Raw
