@@ -24,12 +24,24 @@ git commit -m "feat: establish Codex Boot Animation v1"
 git push -u origin main
 ```
 
-## 首次 Release
+## Release
 
-1. 推送源码后，检查 GitHub Actions 的 Windows 构建结果。
-2. 执行 `scripts/test.ps1` 和 `scripts/package.ps1`，确认程序包包含随附视频与媒体说明。
-3. 上传版本包和对应 `.sha256` 到 Release。
-4. Release 说明写明视频已经包含，解压即可运行，并说明如何换成自己的动画。
+推送版本标签后，`release.yml` 会复用 Windows 和 macOS 构建工作流，等待测试和打包完成，再自动创建 GitHub Release 并上传桌面包：
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+用户下载入口是仓库的 **Releases → Latest**。网站的“下载桌面版”按钮也指向这里。
+
+Release 包含：
+
+- Windows 控制中心便携 ZIP、NSIS 安装器，以及带完整演示视频的原生播放器 ZIP；
+- macOS Apple Silicon 控制中心 ZIP/DMG，以及独立预览播放器 ZIP；
+- 对应的 SHA-256 文件（适用于带视频的独立播放器包）。
+
+安装包默认只预览，不会自动接管系统入口。Release 说明必须明确这一点，并引导用户在控制中心中明确点击“启用启动动画”。
 
 `build.yml` 会构建、运行离线检查、打包仓库中的示例视频，并把 ZIP 与哈希作为 Actions artifact 保留；它不自动建立 Release，也不会读取开发者的个人视频目录。
 
@@ -42,12 +54,11 @@ git push -u origin main
 
 ## English
 
-The repository is already created and points to `a0984076234-byte/Codex-boot-animation`. Do not run `gh repo create` again. Verify the remote with `git remote -v`, then commit and push the first public baseline:
+The repository is already created and points to `a0984076234-byte/Codex-boot-animation`. Do not run `gh repo create` again. Verify the remote with `git remote -v`, then create a version tag to publish a release:
 
 ```sh
-git add .
-git commit -m "feat: establish Codex Boot Animation v1"
-git push -u origin main
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-The control center previews by default. It only backs up and changes recognized Codex launch entry points after the user explicitly chooses **Enable startup animation**. Code is MIT-licensed; bundled demonstration media has a separate notice and may carry different rights.
+The release workflow uploads Windows and macOS desktop packages. The control center previews by default and only backs up and changes recognized Codex launch entry points after the user explicitly chooses **Enable startup animation**. Code is MIT-licensed; bundled demonstration media has a separate notice and may carry different rights.

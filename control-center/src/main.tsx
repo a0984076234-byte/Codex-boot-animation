@@ -67,6 +67,14 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+function detectWebPlatform() {
+  if (typeof navigator === "undefined") return "other" as const;
+  const agent = navigator.userAgent.toLowerCase();
+  if (agent.includes("windows")) return "windows" as const;
+  if (agent.includes("mac os") || agent.includes("macintosh")) return "macos" as const;
+  return "other" as const;
+}
+
 function webAssetUrl(path: string, base = document.baseURI) {
   if (/^(blob:|data:|https?:\/\/)/i.test(path)) return path;
   return new URL(path.replace(/^\.?\//, ""), base).toString();
@@ -274,7 +282,12 @@ const copy = {
     webModeBody: "当前页面运行在浏览器中，可以管理主题和播放预览，但不会修改 Windows 快捷方式或 macOS LaunchAgent。完整接管功能请下载桌面版。",
     desktopOnly: "此操作仅支持 Tauri 桌面版",
     webImportHint: "浏览器模式支持公开 GitHub 主题和本地主题文件夹",
-    webRuntime: "网页预览可用"
+    webRuntime: "网页预览可用",
+    downloadDesktop: "下载桌面版",
+    downloadWindows: "下载 Windows 版",
+    downloadMac: "下载 macOS 版",
+    downloadBody: "网页只能预览主题；下载桌面版后，才能把动画应用到 Codex 启动入口。",
+    installGuide: "查看安装说明"
   },
   en: {
     appName: "Codex Boot Animation",
@@ -361,7 +374,12 @@ const copy = {
     webModeBody: "This page is running in a browser. Theme management and preview work here, but system launch integration requires the desktop app.",
     desktopOnly: "This action is available in the Tauri desktop app only",
     webImportHint: "Browser mode supports public GitHub themes and local theme folders",
-    webRuntime: "Web preview available"
+    webRuntime: "Web preview available",
+    downloadDesktop: "Download desktop app",
+    downloadWindows: "Download for Windows",
+    downloadMac: "Download for macOS",
+    downloadBody: "The website previews themes; the desktop app is required to apply one to Codex launch entries.",
+    installGuide: "Installation guide"
   }
 } as const;
 type Copy = { [Key in keyof typeof copy.zh]: string };
@@ -382,6 +400,9 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const t = copy[locale] as Copy;
+  const webPlatform = detectWebPlatform();
+  const releasesUrl = "https://github.com/a0984076234-byte/Codex-boot-animation/releases/latest";
+  const installGuideUrl = "https://github.com/a0984076234-byte/Codex-boot-animation/blob/main/docs/INSTALLATION.md";
 
   const load = async () => {
     try {
@@ -647,7 +668,7 @@ function App() {
 
         {notice && <div role="status" className={`notice ${notice.kind}`}><span>{notice.text}</span><button aria-label={t.close} onClick={() => setNotice(null)}><X size={15} /></button></div>}
         {busy && <p className="working-status" role="status">{t.processing}…</p>}
-        {!desktopRuntime && <div className="web-mode-banner"><MonitorPlay size={18} /><div><strong>{t.webModeTitle}</strong><p>{t.webModeBody}</p><small>{t.webImportHint}</small></div></div>}
+        {!desktopRuntime && <div className="web-mode-banner"><Download size={18} /><div><strong>{t.webModeTitle}</strong><p>{t.webModeBody}</p><small>{t.webImportHint}</small><p className="web-download-copy">{t.downloadBody}</p><div className="web-mode-actions"><a className="button primary" href={releasesUrl} target="_blank" rel="noreferrer"><Download size={15} /> {webPlatform === "windows" ? t.downloadWindows : webPlatform === "macos" ? t.downloadMac : t.downloadDesktop}</a><a className="button secondary" href={installGuideUrl} target="_blank" rel="noreferrer">{t.installGuide}</a></div></div></div>}
 
         {view === "overview" && (
           <Overview

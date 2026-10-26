@@ -42,6 +42,10 @@ npm run dev
 
 安装包与双语安装步骤见 [安装说明](docs/INSTALLATION.md)，常见错误见 [故障排查](docs/TROUBLESHOOTING.md)。macOS 首版包暂未公证，Windows 首版提供 x64 程序包；两者都不会自动启用系统接管。
 
+### 用户下载与应用流程
+
+网站负责主题预览和主题管理，桌面控制中心负责真正接管 Codex 启动入口。用户在网站中点击“下载桌面版”进入 GitHub Release，按系统下载 Windows ZIP/安装器或 macOS Apple Silicon ZIP/DMG。安装桌面控制中心后，重新导入同一个公开 GitHub 主题，先点击“预览”，确认效果后再点击“启用启动动画”。启用前会创建备份；停用会恢复原始启动入口。完整步骤见 [安装说明](docs/INSTALLATION.md)。
+
 ## macOS 版本
 
 仓库现已附带一个原生 macOS 启动器，代码位于 `macos/`，构建说明和功能边界见 [macOS 使用说明](docs/MACOS.md)。既可直接打开启动器来播放动画，也可安装可选的登录监视器，让从原 Codex 图标启动时播放动画。监视器按 Codex 窗口边界定位动画，并让动画窗口使用连续圆角；结束时把焦点交给 Codex。macOS 版不申请屏幕录制或辅助功能权限，也不改写 Dock 或官方 App。

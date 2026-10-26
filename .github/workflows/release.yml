@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+
+  macos:
+    uses: ./.github/workflows/macos.yml
+    permissions:
+      contents: read
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: CodexBootAnimation-windows-x64
+          path: release-files/windows
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: CodexBootAnimation-macos-arm64
+          path: release-files/macos
+      - name: List release files
+        run: find release-files -type f -maxdepth 6 -print
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            Codex Boot Animation desktop packages.
+
+            - Windows: use the control-center ZIP or NSIS installer.
+            - macOS: use the Apple Silicon ZIP or DMG. The first release is not notarized.
+            - Preview first, then explicitly enable startup integration from the control center.
+          files: release-files/**/*

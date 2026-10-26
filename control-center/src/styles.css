@@ -46,6 +46,9 @@ h3 { margin-top: 6px; font-size: 18px; font-weight: 600; }
 .web-mode-banner strong { display: block; color: #e0edff; font-size: 12px; }
 .web-mode-banner p { margin-top: 4px; line-height: 1.5; }
 .web-mode-banner small { display: block; margin-top: 6px; color: #8da6c2; font-size: 10px; }
+.web-download-copy { color: #c8d9ec; }
+.web-mode-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
+.web-mode-actions .button { text-decoration: none; }
 .web-file-input { display: none; }
 .content-grid { display: grid; gap: 18px; }
 .hero-panel { display: grid; grid-template-columns: 1fr 280px; min-height: 232px; border: 1px solid #2a3a50; background: linear-gradient(115deg, #172537, #101923 68%); border-radius: 9px; overflow: hidden; }
