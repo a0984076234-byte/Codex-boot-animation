@@ -3,6 +3,8 @@ $repoRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $files=@(& git -c core.quotePath=false -C $repoRoot ls-files)
 if ($LASTEXITCODE -ne 0 -or $files.Count -eq 0) { throw 'No tracked repository files. Initialize and stage the clean source first.' }
 foreach ($name in $files) {
+    # This verifier necessarily contains the marker patterns it checks for.
+    if ($name -eq 'scripts/verify-repository.ps1') { continue }
     if ($name -eq 'media/startup.mp4') {
         if ((Get-Item -LiteralPath (Join-Path $repoRoot $name)).Length -ge 100MB) { throw 'Demo video exceeds the regular Git file limit.' }
         continue
