@@ -1,0 +1,64 @@
+name: macOS build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Run Swift package tests
+        run: swift test --package-path macos
+      - name: Build and verify macOS app bundle
+        run: ./scripts/test-macos.sh
+      - name: Stage macOS native sidecar
+        run: |
+          rm -rf control-center/resources/macos/DragonCodexBoot.app
+          mkdir -p control-center/resources/macos
+          ditto build/DragonCodexBoot.app control-center/resources/macos/DragonCodexBoot.app
+      - name: Build and verify standalone Apple Silicon app and package
+        run: ./scripts/test-macos-standalone.sh
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Tauri control center
+        working-directory: control-center
+        run: |
+          npm install
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml
+          npm run tauri build --bundles app
+          codesign --force --deep --sign - \
+            "src-tauri/target/release/bundle/macos/Codex Boot Animation.app"
+          codesign --verify --deep --strict \
+            "src-tauri/target/release/bundle/macos/Codex Boot Animation.app"
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent \
+            "src-tauri/target/release/bundle/macos/Codex Boot Animation.app" \
+            "dist/CodexBootAnimation-0.2.0-macos-arm64.zip"
+          hdiutil create -volname "Codex Boot Animation" \
+            -srcfolder "src-tauri/target/release/bundle/macos/Codex Boot Animation.app" \
+            -ov -format UDZO \
+            "dist/CodexBootAnimation-0.2.0-macos-arm64.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CodexBootAnimation-macos-arm64
+          path: control-center/dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CodexBootAnimation-macos-arm64-app
+          path: control-center/src-tauri/target/release/bundle/macos/*.app
+          if-no-files-found: error

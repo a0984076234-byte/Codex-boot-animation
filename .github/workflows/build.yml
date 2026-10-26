@@ -1,0 +1,66 @@
+name: Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Build and run headless tests
+        shell: powershell
+        run: ./scripts/test.ps1
+      - name: Package with bundled demo video
+        shell: powershell
+        run: ./scripts/package.ps1
+      - name: Check repository and package
+        shell: powershell
+        run: ./scripts/verify-repository.ps1
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Stage Windows native sidecar
+        shell: powershell
+        run: |
+          $destination = Join-Path $PWD 'control-center/resources/windows/DragonCodexBoot'
+          if (Test-Path -LiteralPath $destination) {
+            Remove-Item -LiteralPath $destination -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          Copy-Item -Path (Join-Path $PWD 'build/DragonCodexBoot/*') -Destination $destination -Recurse -Force
+      - name: Build Tauri control center
+        working-directory: control-center
+        shell: powershell
+        run: |
+          npm install
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml
+          npm run tauri build --bundles nsis
+          $portable = Join-Path $PWD 'dist/CodexBootAnimation-0.2.0-win-x64-control-center'
+          New-Item -ItemType Directory -Path $portable -Force | Out-Null
+          Copy-Item -LiteralPath 'src-tauri/target/release/codex-boot-animation-control-center.exe' -Destination $portable
+          $resources = 'src-tauri/target/release/resources'
+          if (Test-Path -LiteralPath $resources) {
+            Copy-Item -LiteralPath $resources -Destination $portable -Recurse -Force
+          }
+          Compress-Archive -Path (Join-Path $portable '*') -DestinationPath ($portable + '.zip') -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CodexBootAnimation-windows-x64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            control-center/src-tauri/target/release/bundle/nsis/*
+          if-no-files-found: error

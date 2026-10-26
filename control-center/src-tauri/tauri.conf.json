@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Codex Boot Animation",
+  "version": "0.2.0",
+  "identifier": "community.codexbootanimation.controlcenter",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Codex Boot Animation",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; media-src 'self' asset: http://asset.localhost https://asset.localhost blob:; img-src 'self' asset: http://asset.localhost https://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/themes/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "resources": {
+      "../resources/windows/": "native/windows/",
+      "../resources/macos/": "native/macos/",
+      "../../codex-theme.json": "demo/codex-theme.json",
+      "../../media/": "demo/media/"
+    },
+    "macOS": { "minimumSystemVersion": "13.0" },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "dialog": {
+      "open": true,
+      "save": false
+    }
+  }
+}

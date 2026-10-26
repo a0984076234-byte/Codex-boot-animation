@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "bundled-demo",
+  "name": "Dragon / 龙娘",
+  "version": "1.0.0",
+  "description": "Bundled 1080p startup animation / 随附 1080p 启动动画",
+  "video": "media/startup.mp4",
+  "poster": "media/poster.jpg",
+  "license": "Bundled demo only; see MEDIA_NOTICE.md",
+  "source": "https://github.com/a0984076234-byte/Codex-boot-animation",
+  "mediaNotice": "media/MEDIA_NOTICE.md",
+  "timeline": {
+    "holdAt": 11.3,
+    "transitionStart": 12.7,
+    "transitionEnd": 13.65,
+    "maxWaitSeconds": 60,
+    "volume": 1,
+    "screenFrames": [
+      { "time": 12.65, "x": 0.123, "y": 0.094, "width": 0.736, "height": 0.725 },
+      { "time": 13, "x": 0.074, "y": 0.061, "width": 0.845, "height": 0.825 },
+      { "time": 13.5, "x": 0, "y": 0, "width": 1, "height": 1 },
+      { "time": 13.65, "x": 0, "y": 0, "width": 1, "height": 1 }
+    ]
+  }
+}
