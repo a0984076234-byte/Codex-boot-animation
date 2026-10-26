@@ -43,7 +43,8 @@ with zipfile.ZipFile(windows) as archive:
             raise SystemExit(f"Missing Windows portable resource: {name}")
 destination.mkdir(parents=True, exist_ok=True)
 for asset in assets:
-    target = destination / asset.name
+    # GitHub replaces spaces in asset names; hash files must use that same name.
+    target = destination / asset.name.replace(" ", ".")
     if asset == windows:
         # Windows PowerShell 5 Compress-Archive uses backslashes inside ZIPs.
         with zipfile.ZipFile(asset) as original, zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as normalized:
