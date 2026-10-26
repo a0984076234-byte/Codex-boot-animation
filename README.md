@@ -26,6 +26,18 @@ npm install
 npm run tauri dev
 ```
 
+如果只想在浏览器中查看主题和播放动画预览，不需要 Rust 或 Tauri：
+
+```sh
+cd control-center
+npm install
+npm run dev
+```
+
+然后打开终端显示的 Vite 地址（默认是 `http://localhost:1420`）。浏览器模式会加载仓库自带主题，也支持公开 GitHub 主题、本地主题文件夹和时间线编辑；它不会修改 Windows 快捷方式、macOS LaunchAgent 或其他系统启动入口。完整的启用、停用、备份和恢复功能只能在 Tauri 桌面控制中心中使用。
+
+`main` 分支会通过 GitHub Actions 发布同一份浏览器预览版到 GitHub Pages。首次启用 Pages 后，地址通常为 `https://a0984076234-byte.github.io/Codex-boot-animation/`；仓库设置中的 Pages 来源需要选择 **GitHub Actions**。
+
 当前 Mac 工作区若未安装 Node/Rust，可直接使用下方原生构建命令验证播放引擎；GitHub Actions 会在 Windows 和 macOS runner 上构建控制中心。
 
 安装包与双语安装步骤见 [安装说明](docs/INSTALLATION.md)，常见错误见 [故障排查](docs/TROUBLESHOOTING.md)。macOS 首版包暂未公证，Windows 首版提供 x64 程序包；两者都不会自动启用系统接管。

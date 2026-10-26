@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -59,6 +59,134 @@ type LauncherStatus = {
 
 type Locale = "zh" | "en";
 type View = "overview" | "themes" | "settings";
+
+const WEB_THEME_KEY = "codex-boot-web-themes";
+const WEB_ACTIVE_THEME_KEY = "codex-boot-web-active-theme";
+
+function isTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function webAssetUrl(path: string, base = document.baseURI) {
+  if (/^(blob:|data:|https?:\/\/)/i.test(path)) return path;
+  return new URL(path.replace(/^\.?\//, ""), base).toString();
+}
+
+function mediaSrc(path: string) {
+  if (!isTauriRuntime()) return webAssetUrl(path);
+  try {
+    return convertFileSrc(path);
+  } catch {
+    return path;
+  }
+}
+
+function validateWebManifest(manifest: Record<string, any>) {
+  if (manifest.schemaVersion !== 1) throw new Error("只支持 schemaVersion 1 的主题清单");
+  for (const field of ["id", "name", "version", "license", "source"]) {
+    if (typeof manifest[field] !== "string" || !manifest[field].trim()) throw new Error(`主题清单缺少 ${field}`);
+  }
+  const safePath = (value: unknown) => typeof value === "string" && value.trim() !== "" &&
+    !value.startsWith("/") && !/^[a-z][a-z0-9+.-]*:/i.test(value) &&
+    !value.split(/[\\/]+/).includes("..");
+  if (!safePath(manifest.video) || (manifest.poster && !safePath(manifest.poster))) {
+    throw new Error("主题媒体必须是主题目录内的相对路径");
+  }
+  const timeline = manifest.timeline;
+  if (!timeline || !Number.isFinite(timeline.holdAt) || !Number.isFinite(timeline.transitionStart) ||
+      !Number.isFinite(timeline.transitionEnd) || !Number.isFinite(timeline.maxWaitSeconds) ||
+      !Number.isFinite(timeline.volume) || timeline.volume < 0 || timeline.volume > 1 ||
+      timeline.holdAt <= 0 || timeline.holdAt >= timeline.transitionStart ||
+      timeline.transitionStart >= timeline.transitionEnd || timeline.maxWaitSeconds < 10 ||
+      timeline.maxWaitSeconds > 3600 || !Array.isArray(timeline.screenFrames) ||
+      timeline.screenFrames.length < 2 || timeline.screenFrames.length > 200) {
+    throw new Error("主题时间线或音量范围无效");
+  }
+}
+
+function themeFromManifest(manifest: Record<string, any>, assetBase: string): Theme {
+  validateWebManifest(manifest);
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    version: manifest.version,
+    description: typeof manifest.description === "string" ? manifest.description : "",
+    license: manifest.license,
+    source: manifest.source,
+    videoPath: webAssetUrl(manifest.video, assetBase),
+    posterPath: manifest.poster ? webAssetUrl(manifest.poster, assetBase) : undefined,
+    timeline: manifest.timeline
+  };
+}
+
+function readStoredWebThemes() {
+  try {
+    const value = JSON.parse(localStorage.getItem(WEB_THEME_KEY) ?? "[]");
+    return Array.isArray(value) ? value as Theme[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeWebThemes(themes: Theme[]) {
+  try {
+    localStorage.setItem(WEB_THEME_KEY, JSON.stringify(themes.filter((theme) => theme.id !== "bundled-demo")));
+  } catch {
+    // Private browsing or a disabled storage backend should not break preview.
+  }
+}
+
+async function loadWebState(): Promise<{ themes: Theme[]; status: LauncherStatus }> {
+  const response = await fetch(webAssetUrl("codex-theme.json"));
+  if (!response.ok) throw new Error(`无法加载示例主题（HTTP ${response.status}）`);
+  const manifest = await response.json();
+  const demo = themeFromManifest(manifest, document.baseURI);
+  const stored = readStoredWebThemes().filter((theme) => theme.id !== demo.id);
+  let activeTheme = demo.id;
+  try {
+    activeTheme = localStorage.getItem(WEB_ACTIVE_THEME_KEY) || demo.id;
+  } catch {
+    // Keep the bundled theme active when storage is unavailable.
+  }
+  const themes = [demo, ...stored];
+  const active = themes.some((theme) => theme.id === activeTheme) ? activeTheme : demo.id;
+  return {
+    themes,
+    status: {
+      platform: "web",
+      enabled: false,
+      activeTheme: active,
+      nativeAvailable: false,
+      message: "网页预览模式不会修改系统启动入口",
+      dataPath: "浏览器本地存储",
+      backupAvailable: false
+    }
+  };
+}
+
+async function importGithubThemeInBrowser(url: string) {
+  const parsed = new URL(url);
+  if (parsed.hostname !== "github.com") throw new Error("只支持公开 GitHub 仓库地址");
+  const parts = parsed.pathname.split("/").filter(Boolean);
+  if (parts.length < 2) throw new Error("GitHub 地址应包含 owner/repository");
+  const owner = parts[0];
+  const repository = parts[1].replace(/\.git$/, "");
+  let manifestResponse: Response | null = null;
+  let manifestBase = "";
+  for (const branch of ["main", "master"]) {
+    const base = `https://raw.githubusercontent.com/${owner}/${repository}/refs/heads/${branch}/`;
+    const candidate = await fetch(`${base}codex-theme.json`);
+    if (candidate.ok) {
+      manifestResponse = candidate;
+      manifestBase = base;
+      break;
+    }
+  }
+  if (!manifestResponse) throw new Error("仓库根目录没有找到 codex-theme.json");
+  const manifest = await manifestResponse.json();
+  const theme = themeFromManifest({ ...manifest, source: url }, manifestBase);
+  return theme;
+}
 
 const copy = {
   zh: {
@@ -141,7 +269,12 @@ const copy = {
     backupState: "可恢复备份",
     available: "可用",
     unavailable: "暂无",
-    dataDirectory: "用户数据目录"
+    dataDirectory: "用户数据目录",
+    webModeTitle: "网页预览模式",
+    webModeBody: "当前页面运行在浏览器中，可以管理主题和播放预览，但不会修改 Windows 快捷方式或 macOS LaunchAgent。完整接管功能请下载桌面版。",
+    desktopOnly: "此操作仅支持 Tauri 桌面版",
+    webImportHint: "浏览器模式支持公开 GitHub 主题和本地主题文件夹",
+    webRuntime: "网页预览可用"
   },
   en: {
     appName: "Codex Boot Animation",
@@ -223,12 +356,19 @@ const copy = {
     backupState: "Restorable backup",
     available: "Available",
     unavailable: "None",
-    dataDirectory: "User data directory"
+    dataDirectory: "User data directory",
+    webModeTitle: "Web preview mode",
+    webModeBody: "This page is running in a browser. Theme management and preview work here, but system launch integration requires the desktop app.",
+    desktopOnly: "This action is available in the Tauri desktop app only",
+    webImportHint: "Browser mode supports public GitHub themes and local theme folders",
+    webRuntime: "Web preview available"
   }
 } as const;
 type Copy = { [Key in keyof typeof copy.zh]: string };
 
 function App() {
+  const desktopRuntime = isTauriRuntime();
+  const localThemeInputRef = useRef<HTMLInputElement>(null);
   const [locale, setLocale] = useState<Locale>(() => {
     try { return localStorage.getItem("codex-boot-locale") === "en" ? "en" : "zh"; }
     catch { return "zh"; }
@@ -245,6 +385,13 @@ function App() {
 
   const load = async () => {
     try {
+      if (!desktopRuntime) {
+        const next = await loadWebState();
+        setThemes(next.themes);
+        setStatus(next.status);
+        setSelected((current) => next.themes.find((theme) => theme.id === current?.id) ?? next.themes.find((theme) => theme.id === next.status.activeTheme) ?? next.themes[0] ?? null);
+        return;
+      }
       const [nextThemes, nextStatus] = await Promise.all([
         invoke<Theme[]>("list_themes"),
         invoke<LauncherStatus>("launcher_status")
@@ -270,11 +417,29 @@ function App() {
     try { localStorage.setItem("codex-boot-locale", locale); } catch { /* Storage may be disabled. */ }
   }, [locale]);
 
+  useEffect(() => {
+    if (!desktopRuntime) localThemeInputRef.current?.setAttribute("webkitdirectory", "");
+  }, [desktopRuntime]);
+
   const runAction = async (action: string, themeId?: string) => {
     if (action === "enable" && !window.confirm(t.enableConfirm)) return;
     if (action === "restore" && !window.confirm(t.restoreConfirm)) return;
     setBusy(true);
     try {
+      if (!desktopRuntime) {
+        if (action === "preview") {
+          const video = document.querySelector<HTMLVideoElement>(".theme-video");
+          if (!video) setView("themes");
+          if (video) {
+            video.currentTime = 0;
+            await video.play().catch(() => undefined);
+          }
+          setNotice({ kind: "success", text: t.actionDone });
+        } else {
+          setNotice({ kind: "error", text: t.desktopOnly });
+        }
+        return;
+      }
       const request = themeId ? { action, themeId } : { action };
       const nextStatus = await invoke<LauncherStatus>("launcher_action", { request });
       setStatus(nextStatus);
@@ -287,6 +452,10 @@ function App() {
   };
 
   const importLocal = async () => {
+    if (!desktopRuntime) {
+      localThemeInputRef.current?.click();
+      return;
+    }
     const path = await open({ directory: true, multiple: false, title: t.chooseFolder });
     if (!path || Array.isArray(path)) return;
     setBusy(true);
@@ -302,10 +471,60 @@ function App() {
     }
   };
 
+  const importLocalInBrowser = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setBusy(true);
+    try {
+      const entries = Array.from(files);
+      const manifestFile = entries.find((file) => file.name === "codex-theme.json");
+      if (!manifestFile) throw new Error("所选文件夹根目录没有 codex-theme.json");
+      const manifest = JSON.parse(await manifestFile.text());
+      const normalize = (value: string) => value.replaceAll("\\", "/").replace(/^\/+/, "");
+      const relative = (file: File) => normalize((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name);
+      const findAsset = (path: string) => entries.find((file) => relative(file).endsWith(`/${normalize(path)}`) || relative(file) === normalize(path));
+      const videoFile = findAsset(manifest.video);
+      if (!videoFile) throw new Error(`找不到主题视频：${manifest.video}`);
+      const posterFile = manifest.poster ? findAsset(manifest.poster) : undefined;
+      const theme: Theme = themeFromManifest(
+        { ...manifest, source: manifest.source || "local://browser-theme" },
+        "https://browser.local/"
+      );
+      theme.videoPath = URL.createObjectURL(videoFile);
+      theme.posterPath = posterFile ? URL.createObjectURL(posterFile) : undefined;
+      setThemes((current) => {
+        const next = [...current.filter((item) => item.id !== theme.id), theme];
+        storeWebThemes(next);
+        return next;
+      });
+      setSelected(theme);
+      setNotice({ kind: "success", text: t.actionDone });
+      setView("themes");
+    } catch (error) {
+      setNotice({ kind: "error", text: `${t.actionFailed}: ${String(error)}` });
+    } finally {
+      setBusy(false);
+      if (localThemeInputRef.current) localThemeInputRef.current.value = "";
+    }
+  };
+
   const importGithub = async () => {
     if (!githubUrl.trim()) return;
     setBusy(true);
     try {
+      if (!desktopRuntime) {
+        const theme = await importGithubThemeInBrowser(githubUrl.trim());
+        setThemes((current) => {
+          const next = [...current.filter((item) => item.id !== theme.id), theme];
+          storeWebThemes(next);
+          return next;
+        });
+        setSelected(theme);
+        setGithubUrl("");
+        setShowGithub(false);
+        setNotice({ kind: "success", text: t.actionDone });
+        setView("themes");
+        return;
+      }
       await invoke<Theme>("import_github_theme", { url: githubUrl.trim() });
       setGithubUrl("");
       setShowGithub(false);
@@ -322,6 +541,13 @@ function App() {
   const chooseTheme = async (theme: Theme) => {
     setBusy(true);
     try {
+      if (!desktopRuntime) {
+        try { localStorage.setItem(WEB_ACTIVE_THEME_KEY, theme.id); } catch { /* Storage may be disabled. */ }
+        setSelected(theme);
+        setStatus((current) => current ? { ...current, activeTheme: theme.id } : current);
+        setNotice({ kind: "success", text: t.actionDone });
+        return;
+      }
       await invoke("set_active_theme", { id: theme.id });
       setSelected(theme);
       await load();
@@ -336,6 +562,16 @@ function App() {
   const updateTimeline = async (themeId: string, timeline: Timeline) => {
     setBusy(true);
     try {
+      if (!desktopRuntime) {
+        setThemes((current) => {
+          const next = current.map((theme) => theme.id === themeId ? { ...theme, timeline } : theme);
+          storeWebThemes(next);
+          return next;
+        });
+        setSelected((current) => current?.id === themeId ? { ...current, timeline } : current);
+        setNotice({ kind: "success", text: t.timelineSaved });
+        return;
+      }
       const updated = await invoke<Theme>("update_theme_timeline", {
         request: { themeId, timeline }
       });
@@ -353,6 +589,16 @@ function App() {
     if (!window.confirm(`${t.remove} “${theme.name}”?`)) return;
     setBusy(true);
     try {
+      if (!desktopRuntime) {
+        setThemes((current) => {
+          const next = current.filter((item) => item.id !== theme.id);
+          storeWebThemes(next);
+          return next;
+        });
+        setSelected((current) => current?.id === theme.id ? null : current);
+        setNotice({ kind: "success", text: t.actionDone });
+        return;
+      }
       await invoke("remove_theme", { id: theme.id });
       await load();
     } catch (error) {
@@ -401,6 +647,7 @@ function App() {
 
         {notice && <div role="status" className={`notice ${notice.kind}`}><span>{notice.text}</span><button aria-label={t.close} onClick={() => setNotice(null)}><X size={15} /></button></div>}
         {busy && <p className="working-status" role="status">{t.processing}…</p>}
+        {!desktopRuntime && <div className="web-mode-banner"><MonitorPlay size={18} /><div><strong>{t.webModeTitle}</strong><p>{t.webModeBody}</p><small>{t.webImportHint}</small></div></div>}
 
         {view === "overview" && (
           <Overview
@@ -434,6 +681,8 @@ function App() {
         )}
         {view === "settings" && <Settings t={t} status={status} />}
       </main>
+
+      {!desktopRuntime && <input ref={localThemeInputRef} className="web-file-input" type="file" multiple onChange={(event) => void importLocalInBrowser(event.target.files)} />}
 
       {showGithub && (
         <div className="modal-backdrop" onMouseDown={() => setShowGithub(false)}>
@@ -469,12 +718,12 @@ function Overview({ t, activeTheme, status, busy, onPreview, onEnable, onDisable
   return <div className="content-grid">
     <section className="hero-panel">
       <div className="hero-copy"><span className="eyebrow">{t.activeTheme}</span><h2>{activeTheme?.name ?? t.noTheme}</h2><p>{activeTheme?.description || t.emptyBody}</p><div className="hero-actions"><button className="button primary" disabled={!activeTheme || busy} onClick={onPreview}><Play size={16} /> {t.preview}</button><button className="button secondary" onClick={onThemes}><Palette size={16} /> {t.themes}</button></div></div>
-      <div className="hero-art">{activeTheme?.posterPath ? <img src={convertFileSrc(activeTheme.posterPath)} alt={activeTheme.name} /> : <MonitorPlay size={54} strokeWidth={1.2} />}</div>
+      <div className="hero-art">{activeTheme?.posterPath ? <img src={mediaSrc(activeTheme.posterPath)} alt={activeTheme.name} /> : <MonitorPlay size={54} strokeWidth={1.2} />}</div>
     </section>
     <section className="metric-row">
-      <Metric label={t.platform} value={status?.platform === "macos" ? "macOS" : status?.platform === "windows" ? "Windows" : "—"} icon={<MonitorPlay size={17} />} />
+      <Metric label={t.platform} value={status?.platform === "macos" ? "macOS" : status?.platform === "windows" ? "Windows" : status?.platform === "web" ? "Web" : "—"} icon={<MonitorPlay size={17} />} />
       <Metric label={t.integration} value={status?.enabled ? t.enabled : t.disabled} tone={status?.enabled ? "green" : "neutral"} icon={<Power size={17} />} />
-      <Metric label={t.runtime} value={status?.nativeAvailable ? t.nativeReady : t.nativeMissing} tone={status?.nativeAvailable ? "green" : "amber"} icon={<Activity size={17} />} />
+      <Metric label={t.runtime} value={status?.platform === "web" ? t.webRuntime : status?.nativeAvailable ? t.nativeReady : t.nativeMissing} tone={status?.platform === "web" ? "green" : status?.nativeAvailable ? "green" : "amber"} icon={<Activity size={17} />} />
     </section>
     <section className="action-panel">
       <div className="section-heading"><div><span className="eyebrow">{t.integration}</span><h3>{status ? status.enabled ? t.statusEnabled : t.statusDisabled : t.loading}</h3></div><span className={`status-dot ${status?.enabled ? "green" : "amber"}`} /></div>
@@ -508,9 +757,17 @@ function ThemeLibrary({ t, themes, selected, busy, status, onSelect, onUse, onRe
 }) {
   const locked = Boolean(status?.enabled && status.activeTheme === selected?.id);
   return <div className="library-layout">
-    <section className="theme-list-panel"><div className="section-heading"><div><span className="eyebrow">{themes.length} {t.themeCount}</span><h3>{t.themes}</h3></div><button className="button primary compact" onClick={onImportLocal}><Upload size={15} /> {t.addTheme}</button></div><div className="import-row"><button className="button secondary compact" onClick={onImportLocal}><FolderOpen size={15} /> {t.importLocal}</button><button className="button secondary compact" onClick={onImportGithub}><Github size={15} /> {t.importGithub}</button></div>{themes.length === 0 ? <div className="empty-state"><Palette size={26} /><strong>{t.emptyTitle}</strong><p>{t.emptyBody}</p></div> : <div className="theme-list">{themes.map((theme) => <button className={`theme-row ${selected?.id === theme.id ? "selected" : ""}`} key={`${theme.id}-${theme.version}`} onClick={() => onSelect(theme)}><div className="theme-thumb">{theme.posterPath ? <img src={convertFileSrc(theme.posterPath)} alt="" /> : <MonitorPlay size={18} />}</div><div className="theme-row-copy"><strong>{theme.name}</strong><span>{theme.version} · {theme.license}</span></div>{selected?.id === theme.id && <Check size={16} />}</button>)}</div>}</section>
-    <section className="theme-detail-panel">{selected ? <><div className="detail-preview">{selected.videoPath ? <video className="theme-video" src={convertFileSrc(selected.videoPath)} poster={selected.posterPath ? convertFileSrc(selected.posterPath) : undefined} controls preload="metadata" /> : <div className="preview-mark"><MonitorPlay size={42} strokeWidth={1.2} /><span>CODEx / BOOT</span></div>}<button className="preview-button" title={t.preview} aria-label={t.preview} disabled={busy} onClick={() => onPreview(selected)}><Play size={18} /></button></div><div className="detail-heading"><div><span className="eyebrow">{t.manifest}</span><h2>{selected.name}</h2></div><span className="version-pill">v{selected.version}</span></div><p className="detail-copy">{selected.description || t.emptyBody}</p><dl className="detail-meta"><div><dt>{t.license}</dt><dd>{selected.license}</dd></div><div><dt>{t.themeSource}</dt><dd>{new URL(selected.source).pathname}</dd></div></dl>{locked && <p className="locked-note">{t.lockedTheme}</p>}<TimelineEditor t={t} theme={selected} busy={busy || locked} onSave={onSaveTimeline} /><div className="detail-actions"><button className="button primary" disabled={busy || locked} onClick={() => onUse(selected)}><Check size={16} /> {t.useTheme}</button><button className="icon-button danger" title={t.remove} aria-label={t.remove} disabled={busy || locked} onClick={() => onRemove(selected)}><Trash2 size={17} /></button></div></> : <div className="empty-detail"><Sparkles size={28} /><strong>{t.emptyTitle}</strong><p>{t.emptyBody}</p></div>}</section>
+    <section className="theme-list-panel"><div className="section-heading"><div><span className="eyebrow">{themes.length} {t.themeCount}</span><h3>{t.themes}</h3></div><button className="button primary compact" onClick={onImportLocal}><Upload size={15} /> {t.addTheme}</button></div><div className="import-row"><button className="button secondary compact" onClick={onImportLocal}><FolderOpen size={15} /> {t.importLocal}</button><button className="button secondary compact" onClick={onImportGithub}><Github size={15} /> {t.importGithub}</button></div>{themes.length === 0 ? <div className="empty-state"><Palette size={26} /><strong>{t.emptyTitle}</strong><p>{t.emptyBody}</p></div> : <div className="theme-list">{themes.map((theme) => <button className={`theme-row ${selected?.id === theme.id ? "selected" : ""}`} key={`${theme.id}-${theme.version}`} onClick={() => onSelect(theme)}><div className="theme-thumb">{theme.posterPath ? <img src={mediaSrc(theme.posterPath)} alt="" /> : <MonitorPlay size={18} />}</div><div className="theme-row-copy"><strong>{theme.name}</strong><span>{theme.version} · {theme.license}</span></div>{selected?.id === theme.id && <Check size={16} />}</button>)}</div>}</section>
+    <section className="theme-detail-panel">{selected ? <><div className="detail-preview">{selected.videoPath ? <video className="theme-video" src={mediaSrc(selected.videoPath)} poster={selected.posterPath ? mediaSrc(selected.posterPath) : undefined} controls preload="metadata" /> : <div className="preview-mark"><MonitorPlay size={42} strokeWidth={1.2} /><span>CODEx / BOOT</span></div>}<button className="preview-button" title={t.preview} aria-label={t.preview} disabled={busy} onClick={() => onPreview(selected)}><Play size={18} /></button></div><div className="detail-heading"><div><span className="eyebrow">{t.manifest}</span><h2>{selected.name}</h2></div><span className="version-pill">v{selected.version}</span></div><p className="detail-copy">{selected.description || t.emptyBody}</p><dl className="detail-meta"><div><dt>{t.license}</dt><dd>{selected.license}</dd></div><div><dt>{t.themeSource}</dt><dd>{safeSourcePath(selected.source)}</dd></div></dl>{locked && <p className="locked-note">{t.lockedTheme}</p>}<TimelineEditor t={t} theme={selected} busy={busy || locked} onSave={onSaveTimeline} /><div className="detail-actions"><button className="button primary" disabled={busy || locked} onClick={() => onUse(selected)}><Check size={16} /> {t.useTheme}</button><button className="icon-button danger" title={t.remove} aria-label={t.remove} disabled={busy || locked} onClick={() => onRemove(selected)}><Trash2 size={17} /></button></div></> : <div className="empty-detail"><Sparkles size={28} /><strong>{t.emptyTitle}</strong><p>{t.emptyBody}</p></div>}</section>
   </div>;
+}
+
+function safeSourcePath(source: string) {
+  try {
+    return new URL(source).pathname;
+  } catch {
+    return source;
+  }
 }
 
 function TimelineEditor({ t, theme, busy, onSave }: { t: Copy; theme: Theme; busy: boolean; onSave: (theme: Theme, timeline: Timeline) => void }) {
